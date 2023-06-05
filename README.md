@@ -1,6 +1,8 @@
 ![Logo](/readme_images/logo_sm.jpg)
 # GRBLHAL Probing Add-on Plugin
 
+#### USE AT YOUR OWN RISK.  THERE IS NO EXPECTATION THAT THIS CODE PREVENTS DAMAGE TO EQUIPMENT OUR YOURSELF.  ALWAYS PROBE SLOWLY AND MAKE SURE YOU KNOW EXACTLY WHERE THE MACHINE WILL GO AT ALL TIMES
+
 Features:
 - Configure probe polarity independently for tool probe and touch probe.  Allows easy disconnection of NC probes.
 - On PROBE_CONNECTED check probe pin and assert halt outside of any movement that isn't a probing motion.
