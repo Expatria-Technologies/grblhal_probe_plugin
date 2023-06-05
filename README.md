@@ -1,5 +1,6 @@
-# grblhal_probe_plugin
-Plugin for probing and probe protection in GRBLHAL. 
+![Logo](/readme_images/logo_sm.jpg)
+# GRBLHAL Probing Plugin
+##Probe Protection
 
 Features:
 - Configure probe polarity independently for tool probe and touch probe.  Allows easy disconnection of NC probes.
