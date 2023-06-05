@@ -62,9 +62,22 @@ typedef union {
         invert      :1,
         hardlimits  :1,
         ext_pin     :1,
-        reserved    :5;
+        ext_pin_inv :1,
+        reserved    :4;
     };
 } probe_protect_flags_t;
+
+typedef union {
+    uint8_t value;
+    struct {
+        uint8_t
+        toggle      :1,
+        mcode       :1,
+        ext_pin     :1,
+        t99         :1,
+        reserved    :4;
+    };
+} probe_connected_flags_t;
 
 typedef struct {
     uint8_t port;
@@ -74,7 +87,8 @@ typedef struct {
 static tool_data_t *current_tool;
 
 static uint8_t probe_connect_port;
-static bool probe_connected, probe_fixture_active, nvs_hardlimits, nvs_invert_probe_pin = false;
+static bool probe_fixture_active, nvs_hardlimits, nvs_invert_probe_pin = false;
+static probe_connected_flags_t probe_connected;
 static driver_reset_ptr driver_reset;
 static user_mcode_ptrs_t user_mcode;
 
@@ -89,6 +103,11 @@ static on_spindle_select_ptr on_spindle_select;
 static stepper_pulse_start_ptr stepper_pulse_start;
 static spindle_set_state_ptr on_spindle_set_state = NULL;
 static on_tool_selected_ptr on_tool_selected = NULL;
+
+ISR_CODE static void set_connected (uint8_t irq_port, bool is_high)
+{
+    grbl.enqueue_realtime_command(CMD_PROBE_CONNECTED_TOGGLE);
+}
 
 static user_mcode_t mcode_check (user_mcode_t mcode)
 {
@@ -122,8 +141,8 @@ static void on_pulse_start (stepper_t *stepper){
     probe_state_t probe = hal.probe.get_state();
 
     if (probe.triggered || !probe.connected) { // Check probe state.
-        system_set_exec_alarm(Alarm_ProbeFailInitial);
-        protocol_execute_realtime();
+        grbl.enqueue_realtime_command(CMD_RESET);
+        report_message("PROBE PROTECTED!", Message_Warning);
     }
     
     if(stepper_pulse_start)
@@ -195,24 +214,41 @@ bool probe_fixture (tool_data_t *tool, bool at_g59_3, bool on)
 }
 
 static void on_probe_connected_toggle(void){
+    
+    int val = 0;
+    //if there is a pin, read it
+    if(probe_protect_settings.flags.ext_pin){
+        //hal.delay_ms(RELAY_DEBOUNCE, NULL); // Delay a bit to let any contact bounce settle.
+        val = hal.port.wait_on_input(Port_Digital, probe_connect_port, WaitMode_Immediate, 0.0f);//read the IO pin        
+        if(val == 1)
+            probe_connected.ext_pin = true;
+        else
+            probe_connected.ext_pin = false;
 
-    if (current_tool->tool == 99){
-        probe_connected = true;
-        report_message("T99 Probe connected!", Message_Info);
-    } else {
-        if(!probe_connected){
-            probe_connected = true;
-            report_message("Probe connected!", Message_Info);
-        } else {
-            probe_connected = false;
-            report_message("Probe disconnected!", Message_Info);
-        }
+        if(probe_protect_settings.flags.ext_pin_inv)
+            probe_connected.ext_pin = !probe_connected.ext_pin;
     }
 
-    if(probe_connected)
+    
+    if(probe_connected.ext_pin)
+        report_message("External Probe connected!", Message_Info);    
+
+    if (probe_connected.t99)
+        report_message("T99 Probe connected!", Message_Info);
+
+    if(probe_connected.mcode)
+            report_message("Mcode Probe connected!", Message_Info);
+
+    if(probe_connected.toggle)
+            report_message("Probe connect toggled on", Message_Info);
+
+    
+    if(probe_connected.value)
         protection_on();
-    else
+    else{
         protection_off();
+        report_message("Probe disconnected, protection off.", Message_Info);
+    }
 
     if(probe_connected_toggle)
         probe_connected_toggle();
@@ -222,7 +258,7 @@ static void on_probe_connected_toggle(void){
 static void onSpindleSetState (spindle_state_t state, float rpm)
 {
     //If the probe is connected and the spindle is turning on, alarm.
-    if(probe_connected && (state.value !=0)){
+    if(probe_connected.value && (state.value !=0)){
         state.value = 0; //ensure spindle is off
         grbl.enqueue_realtime_command(CMD_RESET);
         report_message("PROBE IS IN SPINDLE!", Message_Warning);
@@ -245,7 +281,11 @@ static void onToolSelected (tool_data_t *tool)
     current_tool = tool;
 
     if (tool->tool == 99)
-        on_probe_connected_toggle();
+        probe_connected.t99 = true;
+    else
+        probe_connected.t99 = false;
+    
+    on_probe_connected_toggle();
 
     if(on_tool_selected)
         on_tool_selected(tool);
@@ -259,8 +299,8 @@ static void mcode_execute (uint_fast16_t state, parser_block_t *gc_block)
       switch((uint16_t)gc_block->user_mcode) {
 
         case 401:
-            if(!probe_connected){
-                probe_connected = true;
+            if(!probe_connected.mcode){
+                probe_connected.mcode = true;
                 //enqueue probe connected symbol.
                 grbl.enqueue_realtime_command(CMD_PROBE_CONNECTED_TOGGLE);
                 hal.delay_ms(RELAY_DEBOUNCE, NULL); // Delay a bit to let any contact bounce settle.
@@ -269,8 +309,8 @@ static void mcode_execute (uint_fast16_t state, parser_block_t *gc_block)
             break;
 
         case 402:
-            if(probe_connected){
-                probe_connected = false;
+            if(probe_connected.mcode){
+                probe_connected.mcode = false;
                 //enqueue probe disconnected symbol.
                 grbl.enqueue_realtime_command(CMD_PROBE_CONNECTED_TOGGLE);
                 hal.delay_ms(RELAY_DEBOUNCE, NULL); // Delay a bit to let any contact bounce settle.
@@ -289,6 +329,9 @@ static void mcode_execute (uint_fast16_t state, parser_block_t *gc_block)
 
 static void probe_reset (void)
 {
+    settings.probe.invert_probe_pin = nvs_invert_probe_pin;
+    hal.limits.enable(settings.limits.flags.hard_enabled, nvs_hardlimits);  //restore hard limit settings.
+    probe_connected.value = 0;
     driver_reset();
 }
 
@@ -307,14 +350,13 @@ static void warning_msg (uint_fast16_t state)
 
 // Add info about our settings for $help and enumerations.
 // Potentially used by senders for settings UI.
-
 static const setting_group_detail_t user_groups [] = {
     { Group_Root, Group_Probing, "Probe Protection"}
 };
 
 static const setting_detail_t user_settings[] = {
     { PROBE_PLUGIN_PORT_SETTING, Group_Probing, "Relay aux port", NULL, Format_Int8, "#0", "0", max_port, Setting_NonCore, &probe_protect_settings.port, NULL, NULL },
-    { PROBE_PLUGIN_FIXTURE_INVERT_LIMIT_SETTING, Group_Probing, "Probe Protection Flags", NULL, Format_Bitfield, "Invert Tool Probe,Hard Limits, External Pin", NULL, NULL, Setting_NonCore, &probe_protect_settings.flags, NULL, NULL },
+    { PROBE_PLUGIN_FIXTURE_INVERT_LIMIT_SETTING, Group_Probing, "Probe Protection Flags", NULL, Format_Bitfield, "Invert Tool Probe,Hard Limits, External Pin, Invert External Pin", NULL, NULL, Setting_NonCore, &probe_protect_settings.flags, NULL, NULL },
 };
 
 #ifndef NO_SETTINGS_DESCRIPTIONS
@@ -325,7 +367,8 @@ static const setting_descr_t probe_protect_settings_descr[] = {
     },
     { PROBE_PLUGIN_FIXTURE_INVERT_LIMIT_SETTING, "Inversion setting for Probe signal during tool measurement.\\n"
                             "Enable hard limits during tool probe.\\n"
-                            "Enable external pin input for probe connected signal.\\n\\n"
+                            "Enable external pin input for probe connected signal.\\n"
+                            "Invert external pin input for probe connected signal.\\n\\n"
                             "NOTE: A hard reset of the controller is required after changing this setting."
     },   
 };
@@ -342,7 +385,7 @@ static void plugin_settings_save (void)
 // Default is highest numbered free port.
 static void plugin_settings_restore (void)
 {
-    probe_protect_settings.port = hal.port.num_digital_out ? hal.port.num_digital_out - 1 : 255;  //set port to 255 by default to disable.
+    probe_protect_settings.port = hal.port.num_digital_out ? hal.port.num_digital_out - 1 : 0;
 
     hal.nvs.memcpy_to_nvs(nvs_address, (uint8_t *)&probe_protect_settings, sizeof(probe_protect_settings_t), true);
 }
@@ -374,7 +417,13 @@ static void plugin_settings_load (void)
 
         } else
             protocol_enqueue_rt_command(warning_no_port);
+
+        //Try to register the interrupt handler.
+        if(!(hal.port.register_interrupt_handler(probe_connect_port, IRQ_Mode_Change, set_connected)))
+            protocol_enqueue_rt_command(warning_no_port);
     }
+
+
 }
 
 // Settings descriptor used by the core when interacting with this plugin.
@@ -395,6 +444,7 @@ static setting_details_t setting_details = {
 void probe_protect_init (void)
 {
     bool ok = false;
+    probe_connected.value = 0;
 
     //Register function pointers
     probe_connected_toggle = hal.probe.connected_toggle;
