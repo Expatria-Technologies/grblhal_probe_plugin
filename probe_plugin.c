@@ -87,7 +87,7 @@ typedef struct {
 static tool_data_t *current_tool;
 
 static uint8_t probe_connect_port;
-static bool probe_fixture_active, nvs_hardlimits, nvs_invert_probe_pin = false;
+static bool nvs_hardlimits, nvs_invert_probe_pin = false;
 static probe_connected_flags_t probe_connected;
 static driver_reset_ptr driver_reset;
 static user_mcode_ptrs_t user_mcode;
@@ -331,7 +331,7 @@ static void probe_reset (void)
 {
     settings.probe.invert_probe_pin = nvs_invert_probe_pin;
     hal.limits.enable(settings.limits.flags.hard_enabled, nvs_hardlimits);  //restore hard limit settings.
-    probe_connected.value = 0;
+    //probe_connected.value = 0;  //seems like it is best for this to survive reset.
     driver_reset();
 }
 
