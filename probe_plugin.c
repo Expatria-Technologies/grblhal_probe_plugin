@@ -75,7 +75,8 @@ static probe_protect_settings_t probe_protect_settings;
 static on_probe_start_ptr on_probe_start;
 static on_probe_completed_ptr on_probe_completed;
 static on_probe_fixture_ptr on_probe_fixture;
-
+static on_spindle_select_ptr on_spindle_select;
+static spindle_set_state_ptr on_spindle_set_state = NULL;
 
 static user_mcode_t mcode_check (user_mcode_t mcode)
 {
@@ -136,7 +137,7 @@ bool probe_fixture (tool_data_t *tool, bool at_g59_3, bool on)
 }
 
 static void probe_safety_check(void){
-    //to handle spindle protection, I think it is easier to set a polling routine that just reads the spindle state when probe is connected.
+    //use on spindle select to set the onSpindleSetState pointer so that things are event driven.
     //hal.spindle_data.get(SpindleData_RPM)->rpm  
 }
 
@@ -150,6 +151,37 @@ static void on_probe_connected_toggle(void){
     if(probe_connected_toggle)
         probe_connected_toggle();
 
+}
+
+static void onSpindleSetState (spindle_state_t state, float rpm)
+{
+    uint32_t idx = FANS_ENABLE;
+    do {
+        if(bit_true(fan_setting.spindle_link, bit(--idx))) {
+
+            if(!state.on && bit_isfalse(fans_linked, bit(idx)))
+                continue;
+
+            if(state.on && !fan_get_state(idx))
+                bit_true(fans_linked, bit(idx));
+
+            if(idx == 0 && !state.on && fan_setting.fan0_off_delay > 0.0f) {
+                fan_off = hal.get_elapsed_ticks();
+                fan_off_delay = (uint32_t)(fan_setting.fan0_off_delay * 60.0f) * 1000;
+            } else
+                fan_set_state(idx, state.on);
+        }
+    } while(idx);
+
+    on_spindle_set_state(state, rpm);
+}
+
+static bool onSpindleSelect (spindle_ptrs_t *spindle)
+{
+    on_spindle_set_state = spindle->set_state;
+    spindle->set_state = onSpindleSetState;
+
+    return on_spindle_select == NULL || on_spindle_select(spindle);
 }
 
 static void mcode_execute (uint_fast16_t state, parser_block_t *gc_block)
@@ -308,6 +340,9 @@ void probe_protect_init (void)
 
     on_probe_start = grbl.on_probe_start;
     grbl.on_probe_start = probe_start;
+
+    on_spindle_select = grbl.on_spindle_select;
+    grbl.on_spindle_select = onSpindleSelect;
 
     driver_reset = hal.driver_reset;
     hal.driver_reset = probe_reset;
