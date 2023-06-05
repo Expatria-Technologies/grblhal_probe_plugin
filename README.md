@@ -3,6 +3,17 @@
 
 #### USE AT YOUR OWN RISK.  THERE IS NO EXPECTATION THAT THIS CODE PREVENTS DAMAGE TO EQUIPMENT OUR YOURSELF.  ALWAYS PROBE SLOWLY AND MAKE SURE YOU KNOW EXACTLY WHERE THE MACHINE WILL GO AT ALL TIMES
 
+## Installation
+Copy or check out the code into your GRBLHAL source tree.  
+Add the following lines to your plugins_init.h.
+```
+#if PROBE_PROTECT_ENABLE
+    extern void probe_protect_init (void);
+    probe_protect_init();
+#endif
+```
+Set the PROBE_PROTECT_ENABLE flag in your platformio.ini or other appropriate location.
+
 Features:
 - Configure probe polarity independently for tool probe and touch probe.  Allows easy disconnection of NC probes.
 - On PROBE_CONNECTED check probe pin and assert halt outside of any movement that isn't a probing motion.
