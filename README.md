@@ -16,7 +16,7 @@ Set the PROBE_PROTECT_ENABLE flag in your platformio.ini or other appropriate lo
 
 Features:
 - Configure probe polarity independently for tool probe and touch probe.  Allows easy disconnection of NC probes.
-- On PROBE_CONNECTED check probe pin and assert halt outside of any movement that isn't a probing motion.
+- On PROBE_CONNECTED check probe pin and assert halt if probe is active outside of any movement that isn't a probing motion.
 - On PROBE_CONNECTED do not allow the spindle to run.
 - Allow PROBE_CONNECTED to be assigned to Aux input (set polarity)
 - Set PROBE_CONNECTED on T99.
