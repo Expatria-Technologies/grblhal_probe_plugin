@@ -44,8 +44,8 @@
 
 #define RELAY_DEBOUNCE 50 // ms - increase if relay is slow and/or bouncy
 
-#define PROBE_PLUGIN_PORT_SETTING Setting_UserDefined_0
-#define PROBE_PLUGIN_FIXTURE_INVERT_LIMIT_SETTING Setting_UserDefined_1
+#define PROBE_PLUGIN_PORT_SETTING Setting_UserDefined_7
+#define PROBE_PLUGIN_FIXTURE_INVERT_LIMIT_SETTING Setting_UserDefined_8
 
 
 
@@ -362,7 +362,7 @@ static const setting_detail_t user_settings[] = {
 #ifndef NO_SETTINGS_DESCRIPTIONS
 
 static const setting_descr_t probe_protect_settings_descr[] = {
-    { PROBE_PLUGIN_PORT_SETTING, "Aux input port number to use for probe connected control.  255 to disable external pin.\\n\\n"
+    { PROBE_PLUGIN_PORT_SETTING, "Aux input port number to use for probe connected control.\\n\\n"
                             "NOTE: A hard reset of the controller is required after changing this setting."
     },
     { PROBE_PLUGIN_FIXTURE_INVERT_LIMIT_SETTING, "Inversion setting for Probe signal during tool measurement.\\n"
