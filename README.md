@@ -24,4 +24,5 @@ Features:
 - Allow hard limits to be enabled during tool probe.
 
 In future:
+- Enable alternate input for toolsetter.
 - Set jog exclusion zone around toolsetter.
