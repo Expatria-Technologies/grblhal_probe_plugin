@@ -44,8 +44,9 @@
 
 #define RELAY_DEBOUNCE 50 // ms - increase if relay is slow and/or bouncy
 
-#define PROBE_PLUGIN_PORT_SETTING Setting_UserDefined_7
-#define PROBE_PLUGIN_FIXTURE_INVERT_LIMIT_SETTING Setting_UserDefined_8
+#define PROBE_PLUGIN_PORT_SETTING1 Setting_UserDefined_7
+#define PROBE_PLUGIN_PORT_SETTING2 Setting_UserDefined_8
+#define PROBE_PLUGIN_FIXTURE_INVERT_LIMIT_SETTING Setting_UserDefined_9
 
 
 
@@ -63,7 +64,9 @@ typedef union {
         hardlimits  :1,
         ext_pin     :1,
         ext_pin_inv :1,
-        reserved    :4;
+        tool_pin     :1,
+        tool_pin_inv :1,        
+        reserved    :2;
     };
 } probe_protect_flags_t;
 
@@ -80,13 +83,19 @@ typedef union {
 } probe_connected_flags_t;
 
 typedef struct {
-    uint8_t port;
+    uint8_t protect_port;
+    uint8_t tool_port;
     probe_protect_flags_t flags;
 } probe_protect_settings_t;
+
+static probe_state_t probe = {
+    .connected = On
+};
 
 static tool_data_t *current_tool;
 
 static uint8_t probe_connect_port;
+static uint8_t tool_probe_port;
 static bool nvs_hardlimits, nvs_invert_probe_pin = false;
 static probe_connected_flags_t probe_connected;
 static driver_reset_ptr driver_reset;
@@ -103,6 +112,7 @@ static on_spindle_select_ptr on_spindle_select;
 static stepper_pulse_start_ptr stepper_pulse_start;
 static spindle_set_state_ptr on_spindle_set_state = NULL;
 static on_tool_selected_ptr on_tool_selected = NULL;
+static probe_get_state_ptr probe_get_state = NULL;
 
 ISR_CODE static void set_connected (uint8_t irq_port, bool is_high)
 {
@@ -136,6 +146,21 @@ static status_code_t mcode_validate (parser_block_t *gc_block, parameter_words_t
     return state == Status_Unhandled && user_mcode.validate ? user_mcode.validate(gc_block, deprecated) : state;
 }
 
+// local redirected probing function for tool probe pin.
+static probe_state_t probeGetState (void)
+{
+    probe_state_t state = {0};
+    uint8_t val;
+
+    state.connected = On; //tool setter is fixed and always connected.  Maybe add some error handling here?
+    state.triggered = hal.port.wait_on_input(Port_Digital, tool_probe_port, WaitMode_Immediate, 0.0f);//read the IO pin
+
+    if(probe_protect_settings.flags.tool_pin_inv)
+        state.triggered = !state.triggered;   
+
+    return state;
+}
+
 static void on_pulse_start (stepper_t *stepper){
 
     probe_state_t probe = hal.probe.get_state();
@@ -157,8 +182,10 @@ static void protection_on (void){
 
 static void protection_off (void){
     
-    hal.stepper.pulse_start = stepper_pulse_start;
-    stepper_pulse_start = NULL;  //risk of null pointer error?
+    if(stepper_pulse_start){
+        hal.stepper.pulse_start = stepper_pulse_start;
+        stepper_pulse_start = NULL;  //risk of null pointer error?
+    }
 }
 
 static bool probe_start (axes_signals_t axes, float *target, plan_line_data_t *pl_data){
@@ -180,6 +207,12 @@ static void probe_completed (void){
     settings.probe.invert_probe_pin = nvs_invert_probe_pin;
     hal.limits.enable(settings.limits.flags.hard_enabled, nvs_hardlimits);  //restore hard limit settings.
 
+    //if probe state was redirected, restore it
+    if(probe_get_state){
+        hal.probe.get_state = probe_get_state;
+        probe_get_state = NULL;
+    }
+
     if(on_probe_completed)
         on_probe_completed();
 }
@@ -195,6 +228,14 @@ bool probe_fixture (tool_data_t *tool, bool at_g59_3, bool on)
         //set polarity before probing the fixture.
         if(probe_protect_settings.flags.invert)
             settings.probe.invert_probe_pin = !nvs_invert_probe_pin;
+        
+        //if a different pin is configured, re-direct probe reading to that pin via function pointer.
+        if(probe_protect_settings.flags.tool_pin){
+            //store current probe state
+            probe = hal.probe.get_state();
+            probe_get_state = hal.probe.get_state;
+            hal.probe.get_state = probeGetState;
+        }
 
         //set hard limits before probing the fixture.
         if(tool && !nvs_hardlimits && probe_protect_settings.flags.hardlimits){ //if the hard limits are not already enabled they need to be enabled.
@@ -355,20 +396,26 @@ static const setting_group_detail_t user_groups [] = {
 };
 
 static const setting_detail_t user_settings[] = {
-    { PROBE_PLUGIN_PORT_SETTING, Group_Probing, "Relay aux port", NULL, Format_Int8, "#0", "0", max_port, Setting_NonCore, &probe_protect_settings.port, NULL, NULL },
-    { PROBE_PLUGIN_FIXTURE_INVERT_LIMIT_SETTING, Group_Probing, "Probe Protection Flags", NULL, Format_Bitfield, "Invert Tool Probe,Hard Limits, External Pin, Invert External Pin", NULL, NULL, Setting_NonCore, &probe_protect_settings.flags, NULL, NULL },
+    { PROBE_PLUGIN_PORT_SETTING1, Group_Probing, "Probe Connected Aux Input", NULL, Format_Int8, "#0", "0", max_port, Setting_NonCore, &probe_protect_settings.protect_port, NULL, NULL },
+    { PROBE_PLUGIN_PORT_SETTING2, Group_Probing, "Tool Probe Aux Input", NULL, Format_Int8, "#0", "0", max_port, Setting_NonCore, &probe_protect_settings.tool_port, NULL, NULL },    
+    { PROBE_PLUGIN_FIXTURE_INVERT_LIMIT_SETTING, Group_Probing, "Probe Protection Flags", NULL, Format_Bitfield, "Invert Tool Probe,Hard Limits, External Pin, Invert External Pin, Tool Pin, Invert Tool Pin", NULL, NULL, Setting_NonCore, &probe_protect_settings.flags, NULL, NULL },
 };
 
 #ifndef NO_SETTINGS_DESCRIPTIONS
 
 static const setting_descr_t probe_protect_settings_descr[] = {
-    { PROBE_PLUGIN_PORT_SETTING, "Aux input port number to use for probe connected control.\\n\\n"
+    { PROBE_PLUGIN_PORT_SETTING1, "Aux input port number to use for probe connected control.\\n\\n"
                             "NOTE: A hard reset of the controller is required after changing this setting."
     },
+    { PROBE_PLUGIN_PORT_SETTING2, "Aux input port number to use for tool probing at G59.3.\\n\\n"
+                            "NOTE: A hard reset of the controller is required after changing this setting."
+    },    
     { PROBE_PLUGIN_FIXTURE_INVERT_LIMIT_SETTING, "Inversion setting for Probe signal during tool measurement.\\n"
                             "Enable hard limits during tool probe.\\n"
                             "Enable external pin input for probe connected signal.\\n"
                             "Invert external pin input for probe connected signal.\\n\\n"
+                            "Enable alternate pin input for Tool Probe signal.\\n"
+                            "Invert alternate pin input for Tool Probe signal.\\n\\n"                            
                             "NOTE: A hard reset of the controller is required after changing this setting."
     },   
 };
@@ -385,7 +432,9 @@ static void plugin_settings_save (void)
 // Default is highest numbered free port.
 static void plugin_settings_restore (void)
 {
-    probe_protect_settings.port = hal.port.num_digital_out ? hal.port.num_digital_out - 1 : 0;
+    probe_protect_settings.protect_port = hal.port.num_digital_out ? hal.port.num_digital_out - 1 : 0;
+    probe_protect_settings.tool_port = hal.port.num_digital_out ? hal.port.num_digital_out - 1 : 0;
+    probe_protect_settings.flags.value = 0;
 
     hal.nvs.memcpy_to_nvs(nvs_address, (uint8_t *)&probe_protect_settings, sizeof(probe_protect_settings_t), true);
 }
@@ -403,10 +452,13 @@ static void plugin_settings_load (void)
         plugin_settings_restore();
 
     // Sanity check
-    if(probe_protect_settings.port >= n_ports)
-        probe_protect_settings.port = n_ports - 1;
+    if(probe_protect_settings.protect_port >= n_ports)
+        probe_protect_settings.protect_port = n_ports - 1;
 
-    probe_connect_port = probe_protect_settings.port;
+    if(probe_protect_settings.tool_port >= n_ports)
+        probe_protect_settings.tool_port = n_ports - 1;        
+
+    probe_connect_port = probe_protect_settings.protect_port;
     nvs_hardlimits = settings.limits.flags.hard_enabled;
     nvs_invert_probe_pin = settings.probe.invert_probe_pin;
 
@@ -416,14 +468,23 @@ static void plugin_settings_load (void)
             memcpy(&user_mcode, &hal.user_mcode, sizeof(user_mcode_ptrs_t));
 
         } else
-            protocol_enqueue_rt_command(warning_no_port);
+            protocol_enqueue_rt_command(warning_no_port);    
 
         //Try to register the interrupt handler.
         if(!(hal.port.register_interrupt_handler(probe_connect_port, IRQ_Mode_Change, set_connected)))
             protocol_enqueue_rt_command(warning_no_port);
     }
 
+    if(probe_protect_settings.flags.tool_pin){
+        if(ioport_claim(Port_Digital, Port_Input, &tool_probe_port, "Toolsetter G59.3")) {
 
+            memcpy(&user_mcode, &hal.user_mcode, sizeof(user_mcode_ptrs_t));
+
+        } else
+            protocol_enqueue_rt_command(warning_no_port);      
+
+        //Not an interrupt pin.
+    }
 }
 
 // Settings descriptor used by the core when interacting with this plugin.
@@ -492,7 +553,7 @@ void probe_protect_init (void)
             grbl.on_report_options = report_options;
         }
 
-    } else if((ok = (n_ports = ioports_available(Port_Digital, Port_Input)) > 0 && (nvs_address = nvs_alloc(sizeof(probe_protect_settings_t))))) {
+    } else if((ok = (nvs_address = nvs_alloc(sizeof(probe_protect_settings_t))))) {
 
         on_report_options = grbl.on_report_options;
         grbl.on_report_options = report_options;
