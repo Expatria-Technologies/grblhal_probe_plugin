@@ -456,7 +456,7 @@ static void plugin_settings_load (void)
         probe_protect_settings.protect_port = n_ports - 1;
 
     if(probe_protect_settings.tool_port >= n_ports)
-        probe_protect_settings.tool_port = n_ports - 1;        
+        probe_protect_settings.tool_port = n_ports - 2;        
 
     probe_connect_port = probe_protect_settings.protect_port;
     nvs_hardlimits = settings.limits.flags.hard_enabled;
@@ -504,7 +504,7 @@ static setting_details_t setting_details = {
 
 void probe_protect_init (void)
 {
-    bool ok = false;
+    bool ok = (n_ports = ioports_available(Port_Digital, Port_Input));
     probe_connected.value = 0;
 
     //Register function pointers
