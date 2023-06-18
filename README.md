@@ -26,7 +26,7 @@ Features:
 - Set PROBE_CONNECTED on T99.
 - Set PROBE_CONNECTED with M401 and clear with M402 mcodes.
 - Allow hard limits to be enabled during tool probe.
+- Enable an alternate input for toolsetter.
 
 In future:
-- Enable alternate input for toolsetter.
 - Set jog exclusion zone around toolsetter.
