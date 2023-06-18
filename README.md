@@ -23,6 +23,7 @@ Features:
 - On PROBE_CONNECTED check probe pin and assert halt if probe is active outside of any movement that isn't a probing motion.
 - On PROBE_CONNECTED does not allow the spindle to run.
 - Allow PROBE_CONNECTED to be assigned to Aux input (set polarity)
+    - This requires an interrupt capable pin.
 - Set PROBE_CONNECTED on T99.
 - Set PROBE_CONNECTED with M401 and clear with M402 mcodes.
 - Allow hard limits to be enabled during tool probe.
