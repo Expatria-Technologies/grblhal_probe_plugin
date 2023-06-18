@@ -3,6 +3,10 @@
 
 #### USE AT YOUR OWN RISK.  THERE IS NO EXPECTATION THAT THIS CODE PREVENTS DAMAGE TO EQUIPMENT OR YOURSELF.  ALWAYS PROBE SLOWLY AND MAKE SURE YOU KNOW EXACTLY WHERE THE MACHINE WILL GO AT ALL TIMES
 
+Test on the FlexiHAL controller:
+
+https://github.com/Expatria-Technologies/Flexi-HAL
+
 ## Installation
 Copy or check out the code into your GRBLHAL source tree.  
 Add the following lines to your plugins_init.h.
