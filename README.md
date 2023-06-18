@@ -19,7 +19,7 @@ Add the following lines to your plugins_init.h.
 Set the PROBE_PROTECT_ENABLE flag in your platformio.ini or other appropriate location.
 
 Features:
-- Configure probe polarity independently for tool probe and touch probe.  Allows easy disconnection of NC probes.
+- Configure probe polarity independently for tool probe and touch probe.  Allows easy disconnection of NC probes when used with XOR or XNOR probe input (as on FlexiHAL).
 - On PROBE_CONNECTED check probe pin and assert halt if probe is active outside of any movement that isn't a probing motion.
 - On PROBE_CONNECTED does not allow the spindle to run.
 - Allow PROBE_CONNECTED to be assigned to Aux input (set polarity)
