@@ -30,4 +30,5 @@ Features:
 - Enable an alternate input for toolsetter.
 
 In future:
+- Trigger macro .nc upon probe connection and disconnection.
 - Set jog exclusion zone around toolsetter.
