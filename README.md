@@ -33,3 +33,4 @@ In future:
 - Trigger macro .nc upon probe connection and disconnection.
 - Set jog exclusion zone around toolsetter.
 - Store TLR persistently.
+- Different decel value for probing
