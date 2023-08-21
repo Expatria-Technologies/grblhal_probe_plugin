@@ -291,8 +291,12 @@ static void on_probe_connected_toggle(void){
         report_message("Probe disconnected, protection off.", Message_Info);
     }
 
-    if(probe_connected_toggle)
-        probe_connected_toggle();
+    probe_state_t probe = hal.probe.get_state();
+
+    if(!probe.connected) {
+        if(probe_connected_toggle)
+            probe_connected_toggle();        
+    }
 
 }
 
@@ -380,8 +384,11 @@ static void report_options (bool newopt)
 {
     on_report_options(newopt);
 
-    if(!newopt)
+    if(!newopt) {
         hal.stream.write("[PLUGIN:Probe Protection v0.01]" ASCII_EOL);
+    }        
+
+
 }
 
 static void warning_msg (uint_fast16_t state)
@@ -563,6 +570,15 @@ void probe_protect_init (void)
         // Used for setting value validation
         strcpy(max_port, uitoa(n_ports - 1));
     }
+
+    //need to add some init code to check the pin states (if enabled) and set the connected flag on or off.
+    /*
+    probe_state_t probe = hal.probe.get_state();
+
+    if(probe.connected) {
+        if(probe_connected_toggle)
+            probe_connected_toggle();        
+    }*/
 
     if(!ok)
         protocol_enqueue_rt_command(warning_msg);
