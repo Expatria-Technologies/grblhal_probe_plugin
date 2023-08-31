@@ -325,7 +325,7 @@ static void onToolSelected (tool_data_t *tool)
     //if the tool is 99, set probe connected.
     current_tool = tool;
 
-    if (tool->tool == 99)
+    if (tool->tool_id == 99)
         probe_connected.t99 = true;
     else
         probe_connected.t99 = false;
