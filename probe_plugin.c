@@ -36,6 +36,10 @@
 
 */
 
+#include "driver.h"
+
+#if PROBE_PROTECT_ENABLE == 1
+
 #include <math.h>
 #include <string.h>
 #include <stdio.h>
@@ -96,7 +100,7 @@ static tool_data_t *current_tool;
 
 static uint8_t probe_connect_port;
 static uint8_t tool_probe_port;
-static bool nvs_hardlimits, nvs_invert_probe_pin = false;
+static bool nvs_invert_probe_pin = false;
 static probe_connected_flags_t probe_connected;
 static driver_reset_ptr driver_reset;
 static user_mcode_ptrs_t user_mcode;
@@ -150,7 +154,6 @@ static status_code_t mcode_validate (parser_block_t *gc_block, parameter_words_t
 static probe_state_t probeGetState (void)
 {
     probe_state_t state = {0};
-    uint8_t val;
 
     state.connected = On; //tool setter is fixed and always connected.  Maybe add some error handling here?
     state.triggered = hal.port.wait_on_input(Port_Digital, tool_probe_port, WaitMode_Immediate, 0.0f);//read the IO pin
@@ -205,7 +208,7 @@ static void probe_completed (void){
 
     //restore anything changed during tool probing.
     settings.probe.invert_probe_pin = nvs_invert_probe_pin;
-    hal.limits.enable(settings.limits.flags.hard_enabled, nvs_hardlimits);  //restore hard limit settings.
+    hal.limits.enable(settings.limits.flags.hard_enabled, (axes_signals_t){0});  //restore hard limit settings.
 
     //if probe state was redirected, restore it
     if(probe_get_state){
@@ -238,14 +241,14 @@ bool probe_fixture (tool_data_t *tool, bool at_g59_3, bool on)
         }
 
         //set hard limits before probing the fixture.
-        if(tool && !nvs_hardlimits && probe_protect_settings.flags.hardlimits){ //if the hard limits are not already enabled they need to be enabled.
-            hal.limits.enable(settings.limits.flags.hard_enabled, true); // Change immediately. NOTE: Nice to have but could be problematic later.
+        if(!settings.limits.flags.hard_enabled && probe_protect_settings.flags.hardlimits){ //if the hard limits are not already enabled they need to be enabled.
+            hal.limits.enable(true, (axes_signals_t){0}); // Change immediately. NOTE: Nice to have but could be problematic later.
         }
         hal.delay_ms(RELAY_DEBOUNCE, NULL); // Delay a bit to let any contact bounce settle.
     } else{
         //restore settings (not sure if needed)
         //settings.probe.invert_probe_pin = nvs_invert_probe_pin;
-        //hal.limits.enable(settings.limits.flags.hard_enabled, nvs_hardlimits);  //restore hard limit settings.
+        //hal.limits.enable(settings.limits.flags.hard_enabled, (axes_signals_t){0});  //restore hard limit settings.
     }
 
     if(on_probe_fixture)
@@ -375,7 +378,7 @@ static void mcode_execute (uint_fast16_t state, parser_block_t *gc_block)
 static void probe_reset (void)
 {
     settings.probe.invert_probe_pin = nvs_invert_probe_pin;
-    hal.limits.enable(settings.limits.flags.hard_enabled, nvs_hardlimits);  //restore hard limit settings.
+    hal.limits.enable(settings.limits.flags.hard_enabled, (axes_signals_t){0});  //restore hard limit settings.
     //probe_connected.value = 0;  //seems like it is best for this to survive reset.
     driver_reset();
 }
@@ -466,7 +469,6 @@ static void plugin_settings_load (void)
         probe_protect_settings.tool_port = n_ports - 2;        
 
     probe_connect_port = probe_protect_settings.protect_port;
-    nvs_hardlimits = settings.limits.flags.hard_enabled;
     nvs_invert_probe_pin = settings.probe.invert_probe_pin;
 
     if(probe_protect_settings.flags.ext_pin){
@@ -584,3 +586,4 @@ void probe_protect_init (void)
         protocol_enqueue_rt_command(warning_msg);
 }
 
+#endif // PROBE_PROTECT_ENABLE
