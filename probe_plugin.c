@@ -88,9 +88,9 @@ typedef struct {
     probe_protect_flags_t flags;
 } probe_protect_settings_t;
 
-static probe_state_t probe = {
-    .connected = On
-};
+//static probe_state_t probe = {
+//    .connected = Off
+//};
 
 static tool_data_t *current_tool;
 
@@ -201,7 +201,9 @@ static bool probe_start (axes_signals_t axes, float *target, plan_line_data_t *p
 
 static void probe_completed (void){
     //if probe connected, re-activate protection.
-    protection_on();
+    probe_state_t probe = hal.probe.get_state();
+    if (probe.connected && probe_connected.value)
+        protection_on();
 
     //restore anything changed during tool probing.
     settings.probe.invert_probe_pin = nvs_invert_probe_pin;
@@ -222,6 +224,7 @@ static void probe_completed (void){
 bool probe_fixture (tool_data_t *tool, bool at_g59_3, bool on)
 {
     bool status = true;
+    probe_state_t probe = hal.probe.get_state();
 
     if(tool){ //are doing a tool change.
 
