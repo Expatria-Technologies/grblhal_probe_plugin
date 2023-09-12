@@ -43,6 +43,7 @@
 #include "probe_plugin.h"
 
 #define RELAY_DEBOUNCE 50 // ms - increase if relay is slow and/or bouncy
+#define PROBE_DEBOUNCE 25 // ms - increase if probe is slow and/or bouncy
 
 #define PROBE_PLUGIN_PORT_SETTING1 Setting_UserDefined_7
 #define PROBE_PLUGIN_PORT_SETTING2 Setting_UserDefined_8
@@ -60,13 +61,14 @@ typedef union {
     uint8_t value;
     struct {
         uint8_t
-        invert      :1,
-        hardlimits  :1,
-        ext_pin     :1,
-        ext_pin_inv :1,
-        tool_pin     :1,
-        tool_pin_inv :1,        
-        reserved    :2;
+        invert         :1,
+        hardlimits     :1,
+        ext_pin        :1,
+        ext_pin_inv    :1,
+        tool_pin       :1,
+        tool_pin_inv   :1,
+        motion_protect :1,        
+        reserved    :1;
     };
 } probe_protect_flags_t;
 
@@ -86,6 +88,7 @@ typedef struct {
     uint8_t protect_port;
     uint8_t tool_port;
     probe_protect_flags_t flags;
+    uint16_t debounce;
 } probe_protect_settings_t;
 
 //static probe_state_t probe = {
@@ -93,6 +96,8 @@ typedef struct {
 //};
 
 static tool_data_t *current_tool;
+
+static probe_state_t prev_probe;
 
 static uint8_t probe_connect_port;
 static uint8_t tool_probe_port;
@@ -116,7 +121,9 @@ static probe_get_state_ptr probe_get_state = NULL;
 
 ISR_CODE static void set_connected (uint8_t irq_port, bool is_high)
 {
-    grbl.enqueue_realtime_command(CMD_PROBE_CONNECTED_TOGGLE);
+    probe_state_t probe = hal.probe.get_state();
+    if (!probe.connected)
+        grbl.enqueue_realtime_command(CMD_PROBE_CONNECTED_TOGGLE);
 }
 
 static user_mcode_t mcode_check (user_mcode_t mcode)
@@ -150,7 +157,6 @@ static status_code_t mcode_validate (parser_block_t *gc_block, parameter_words_t
 static probe_state_t probeGetState (void)
 {
     probe_state_t state = {0};
-    uint8_t val;
 
     state.connected = On; //tool setter is fixed and always connected.  Maybe add some error handling here?
     state.triggered = hal.port.wait_on_input(Port_Digital, tool_probe_port, WaitMode_Immediate, 0.0f);//read the IO pin
@@ -161,14 +167,28 @@ static probe_state_t probeGetState (void)
     return state;
 }
 
+//called after short delay to verify that a rising edge on the probe pin is still asserted
+static void protect_debounce_cb(void){
+    probe_state_t probe = hal.probe.get_state();
+
+    if (probe.triggered || !probe.connected) { // Check probe state.  Alarm is still asserted.
+        grbl.enqueue_realtime_command(CMD_STOP);
+        report_message("PROBE PROTECTED!", Message_Warning);
+    }
+    
+}
+
 static void on_pulse_start (stepper_t *stepper){
 
     probe_state_t probe = hal.probe.get_state();
 
-    if (probe.triggered || !probe.connected) { // Check probe state.
-        grbl.enqueue_realtime_command(CMD_RESET);
-        report_message("PROBE PROTECTED!", Message_Warning);
+    //if ((!prev_probe.triggered && probe.triggered) || !probe.connected) { // if probe has a rising edge from last pulse or is disconnected.
+    if ((!prev_probe.triggered && probe.triggered)) { // if probe has a rising edge from last pulse or is disconnected.
+        //call debounce callback
+        hal.delay_ms(PROBE_DEBOUNCE, protect_debounce_cb);
     }
+
+    prev_probe = probe;
     
     if(stepper_pulse_start)
         stepper_pulse_start(stepper);
@@ -176,8 +196,12 @@ static void on_pulse_start (stepper_t *stepper){
 
 static void protection_on (void){
 
-    stepper_pulse_start = hal.stepper.pulse_start;
-    hal.stepper.pulse_start = on_pulse_start;
+    if (probe_protect_settings.flags.motion_protect){
+        probe_state_t probe = hal.probe.get_state();
+        prev_probe.triggered = probe.triggered;
+        stepper_pulse_start = hal.stepper.pulse_start;
+        hal.stepper.pulse_start = on_pulse_start;
+    }
 }
 
 static void protection_off (void){
@@ -202,12 +226,8 @@ static bool probe_start (axes_signals_t axes, float *target, plan_line_data_t *p
 static void probe_completed (void){
     //if probe connected, re-activate protection.
     probe_state_t probe = hal.probe.get_state();
-    if (probe.connected && probe_connected.value)
+    if (probe.connected && probe_connected.value && !gc_state.tool_change)
         protection_on();
-
-    //restore anything changed during tool probing.
-    settings.probe.invert_probe_pin = nvs_invert_probe_pin;
-    hal.limits.enable(settings.limits.flags.hard_enabled, nvs_hardlimits);  //restore hard limit settings.
 
     //if probe state was redirected, restore it
     if(probe_get_state){
@@ -219,6 +239,10 @@ static void probe_completed (void){
         on_probe_completed();
 }
 
+
+//The grbl.on_probe_fixture event handler is called by the default tool change algorithm when probing at G59.3.
+//In addition it will be called on a "normal" probe sequence if the XY position is
+//within the radius of the G59.3 position defined below.
 // When called from "normal" probing tool is always NULL, when called from within
 // a tool change sequence (M6) then tool is a pointer to the selected tool.
 bool probe_fixture (tool_data_t *tool, bool at_g59_3, bool on)
@@ -228,6 +252,9 @@ bool probe_fixture (tool_data_t *tool, bool at_g59_3, bool on)
 
     if(tool){ //are doing a tool change.
 
+        //always disable motion protection when probing the fixture
+        protection_off();
+
         //set polarity before probing the fixture.
         if(probe_protect_settings.flags.invert)
             settings.probe.invert_probe_pin = !nvs_invert_probe_pin;
@@ -235,7 +262,6 @@ bool probe_fixture (tool_data_t *tool, bool at_g59_3, bool on)
         //if a different pin is configured, re-direct probe reading to that pin via function pointer.
         if(probe_protect_settings.flags.tool_pin){
             //store current probe state
-            probe = hal.probe.get_state();
             probe_get_state = hal.probe.get_state;
             hal.probe.get_state = probeGetState;
         }
@@ -245,11 +271,13 @@ bool probe_fixture (tool_data_t *tool, bool at_g59_3, bool on)
             hal.limits.enable(settings.limits.flags.hard_enabled, true); // Change immediately. NOTE: Nice to have but could be problematic later.
         }
         hal.delay_ms(RELAY_DEBOUNCE, NULL); // Delay a bit to let any contact bounce settle.
-    } else{
-        //restore settings (not sure if needed)
-        //settings.probe.invert_probe_pin = nvs_invert_probe_pin;
-        //hal.limits.enable(settings.limits.flags.hard_enabled, nvs_hardlimits);  //restore hard limit settings.
-    }
+    } else {
+        //restore anything changed during tool probing.
+        settings.probe.invert_probe_pin = nvs_invert_probe_pin;
+        hal.limits.enable(settings.limits.flags.hard_enabled, nvs_hardlimits);  //restore hard limit settings.
+        if (probe.connected && probe_connected.value)
+            protection_on();
+    }    
 
     if(on_probe_fixture)
         status = on_probe_fixture(tool, at_g59_3, on);
@@ -260,6 +288,7 @@ bool probe_fixture (tool_data_t *tool, bool at_g59_3, bool on)
 static void on_probe_connected_toggle(void){
     
     int val = 0;
+    static uint8_t previous_flags;
     //if there is a pin, read it
     if(probe_protect_settings.flags.ext_pin){
         //hal.delay_ms(RELAY_DEBOUNCE, NULL); // Delay a bit to let any contact bounce settle.
@@ -286,13 +315,15 @@ static void on_probe_connected_toggle(void){
     if(probe_connected.toggle)
             report_message("Probe connect toggled on", Message_Info);
 
-    
     if(probe_connected.value)
         protection_on();
     else{
         protection_off();
-        report_message("Probe disconnected, protection off.", Message_Info);
+        if (previous_flags != probe_connected.value)
+            report_message("Probe disconnected, protection off.", Message_Info);
     }
+
+    previous_flags = probe_connected.value;
 
     probe_state_t probe = hal.probe.get_state();
 
@@ -342,6 +373,7 @@ static void onToolSelected (tool_data_t *tool)
 static void mcode_execute (uint_fast16_t state, parser_block_t *gc_block)
 {
     bool handled = true;
+    probe_state_t probe = hal.probe.get_state();
 
     if (state != STATE_CHECK_MODE)
       switch((uint16_t)gc_block->user_mcode) {
@@ -349,8 +381,9 @@ static void mcode_execute (uint_fast16_t state, parser_block_t *gc_block)
         case 401:
             if(!probe_connected.mcode){
                 probe_connected.mcode = true;
-                //enqueue probe connected symbol.
-                grbl.enqueue_realtime_command(CMD_PROBE_CONNECTED_TOGGLE);
+                //enqueue probe connected symbol.                
+                if (!probe.connected)                
+                    grbl.enqueue_realtime_command(CMD_PROBE_CONNECTED_TOGGLE);
                 hal.delay_ms(RELAY_DEBOUNCE, NULL); // Delay a bit to let any contact bounce settle.
             }else
                 report_message("Probe connected signal already asserted!", Message_Warning);
@@ -360,7 +393,8 @@ static void mcode_execute (uint_fast16_t state, parser_block_t *gc_block)
             if(probe_connected.mcode){
                 probe_connected.mcode = false;
                 //enqueue probe disconnected symbol.
-                grbl.enqueue_realtime_command(CMD_PROBE_CONNECTED_TOGGLE);
+                if (probe.connected)                
+                    grbl.enqueue_realtime_command(CMD_PROBE_CONNECTED_TOGGLE);
                 hal.delay_ms(RELAY_DEBOUNCE, NULL); // Delay a bit to let any contact bounce settle.
             }else
                 report_message("Probe connected signal not asserted!", Message_Warning);
@@ -408,7 +442,7 @@ static const setting_group_detail_t user_groups [] = {
 static const setting_detail_t user_settings[] = {
     { PROBE_PLUGIN_PORT_SETTING1, Group_Probing, "Probe Connected Aux Input", NULL, Format_Int8, "#0", "0", max_port, Setting_NonCore, &probe_protect_settings.protect_port, NULL, NULL },
     { PROBE_PLUGIN_PORT_SETTING2, Group_Probing, "Tool Probe Aux Input", NULL, Format_Int8, "#0", "0", max_port, Setting_NonCore, &probe_protect_settings.tool_port, NULL, NULL },    
-    { PROBE_PLUGIN_FIXTURE_INVERT_LIMIT_SETTING, Group_Probing, "Probe Protection Flags", NULL, Format_Bitfield, "Invert Tool Probe,Hard Limits, External Connected Pin, Invert External Connected Pin, Alternate Tool Probe Pin, Invert Tool Probe Pin", NULL, NULL, Setting_NonCore, &probe_protect_settings.flags, NULL, NULL },
+    { PROBE_PLUGIN_FIXTURE_INVERT_LIMIT_SETTING, Group_Probing, "Probe Protection Flags", NULL, Format_Bitfield, "Invert Tool Probe,Hard Limits, External Connected Pin, Invert External Connected Pin, Alternate Tool Probe Pin, Invert Tool Probe Pin, Enable Motion Protection", NULL, NULL, Setting_NonCore, &probe_protect_settings.flags, NULL, NULL },   
 };
 
 #ifndef NO_SETTINGS_DESCRIPTIONS
@@ -420,12 +454,13 @@ static const setting_descr_t probe_protect_settings_descr[] = {
     { PROBE_PLUGIN_PORT_SETTING2, "Aux input port number to use for tool probing at G59.3.\\n\\n"
                             "NOTE: A hard reset of the controller is required after changing this setting."
     },    
-    { PROBE_PLUGIN_FIXTURE_INVERT_LIMIT_SETTING, "Inversion setting for Probe signal during tool measurement.\\n"
-                            "Enable hard limits during tool probe.\\n"
-                            "Enable external pin input for probe connected signal.\\n"
+    { PROBE_PLUGIN_FIXTURE_INVERT_LIMIT_SETTING, "Inversion setting for Probe signal during tool measurement.\\n\\n"
+                            "Enable hard limits during tool probe.\\n\\n"
+                            "Enable external pin input for probe connected signal.\\n\\n"
                             "Invert external pin input for probe connected signal.\\n\\n"
-                            "Enable alternate pin input for Tool Probe signal.\\n"
-                            "Invert alternate pin input for Tool Probe signal.\\n\\n"                            
+                            "Enable alternate pin input for Tool Probe signal.\\n\\n"
+                            "Invert alternate pin input for Tool Probe signal.\\n\\n"    
+                            "Enable probe motion protection.  Alarm will trip if probe is asserted on non-probing moves (Experimental).\\n\\n"                          
                             "NOTE: A hard reset of the controller is required after changing this setting."
     },   
 };
