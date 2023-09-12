@@ -454,13 +454,13 @@ static const setting_descr_t probe_protect_settings_descr[] = {
     { PROBE_PLUGIN_PORT_SETTING2, "Aux input port number to use for tool probing at G59.3.\\n\\n"
                             "NOTE: A hard reset of the controller is required after changing this setting."
     },    
-    { PROBE_PLUGIN_FIXTURE_INVERT_LIMIT_SETTING, "Inversion setting for Probe signal during tool measurement.\\n\\n"
-                            "Enable hard limits during tool probe.\\n\\n"
-                            "Enable external pin input for probe connected signal.\\n\\n"
-                            "Invert external pin input for probe connected signal.\\n\\n"
-                            "Enable alternate pin input for Tool Probe signal.\\n\\n"
-                            "Invert alternate pin input for Tool Probe signal.\\n\\n"    
-                            "Enable probe motion protection.  Alarm will trip if probe is asserted on non-probing moves (Experimental).\\n\\n"                          
+    { PROBE_PLUGIN_FIXTURE_INVERT_LIMIT_SETTING, "Inversion setting for Probe signal during tool measurement.\\n"
+                            "Enable hard limits during tool probe.\\n"
+                            "Enable external pin input for probe connected signal.\\n"
+                            "Invert external pin input for probe connected signal.\\n"
+                            "Enable alternate pin input for Tool Probe signal.\\n"
+                            "Invert alternate pin input for Tool Probe signal.\\n"    
+                            "Enable probe motion protection.  Alarm will trip if probe is asserted on non-probing moves (Experimental).\\n"                          
                             "NOTE: A hard reset of the controller is required after changing this setting."
     },   
 };
