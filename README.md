@@ -26,11 +26,11 @@ Features:
     - This requires an interrupt capable pin.
 - Set PROBE_CONNECTED on T99.
 - Set PROBE_CONNECTED with M401 and clear with M402 mcodes.
-- Allow hard limits to be enabled during tool probe.
 - Enable an alternate input for toolsetter.
 
 In future:
 - Trigger macro .nc upon probe connection and disconnection.
+- - Allow hard limits to be enabled during tool probe.
 - Set jog exclusion zone around toolsetter.
 - Store TLR persistently.
 - Different decel value for probing
