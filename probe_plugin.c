@@ -62,13 +62,12 @@ typedef union {
     struct {
         uint8_t
         invert         :1,
-        hardlimits     :1,
         ext_pin        :1,
         ext_pin_inv    :1,
         tool_pin       :1,
         tool_pin_inv   :1,
         motion_protect :1,        
-        reserved    :1;
+        reserved    :2;
     };
 } probe_protect_flags_t;
 
@@ -303,12 +302,12 @@ bool probe_fixture (tool_data_t *tool, bool at_g59_3, bool on)
         }
 
         //set hard limits before probing the fixture.
-        if(!nvs_hardlimits && probe_protect_settings.flags.hardlimits){ //if the hard limits are not already enabled they need to be enabled.
-            hal.limits.enable(settings.limits.flags.hard_enabled, true); // Change immediately. NOTE: Nice to have but could be problematic later.
-        }
+        //if(!nvs_hardlimits && probe_protect_settings.flags.hardlimits){ //if the hard limits are not already enabled they need to be enabled.
+        //    hal.limits.enable(settings.limits.flags.hard_enabled, true); // Change immediately. NOTE: Nice to have but could be problematic later.
+        //}
     }else{
         settings.probe.invert_probe_pin = nvs_invert_probe_pin;  //restore pin inversion setting
-        hal.limits.enable(settings.limits.flags.hard_enabled, nvs_hardlimits);  //restore hard limit settings.
+        //hal.limits.enable(settings.limits.flags.hard_enabled, nvs_hardlimits);  //restore hard limit settings.
         protection_on();      //restore protection.   
     }
 
@@ -454,7 +453,7 @@ static const setting_group_detail_t user_groups [] = {
 static const setting_detail_t user_settings[] = {
     { PROBE_PLUGIN_PORT_SETTING1, Group_Probing, "Probe Connected Aux Input", NULL, Format_Int8, "#0", "0", max_port, Setting_NonCore, &probe_protect_settings.protect_port, NULL, NULL },
     { PROBE_PLUGIN_PORT_SETTING2, Group_Probing, "Tool Probe Aux Input", NULL, Format_Int8, "#0", "0", max_port, Setting_NonCore, &probe_protect_settings.tool_port, NULL, NULL },    
-    { PROBE_PLUGIN_FIXTURE_INVERT_LIMIT_SETTING, Group_Probing, "Probe Protection Flags", NULL, Format_Bitfield, "Invert Tool Probe, Tool Hard Limits, External Connected Pin, Invert External Connected Pin, Alternate Tool Probe Pin, Invert Tool Probe Pin, Enable Motion Protection", NULL, NULL, Setting_NonCore, &probe_protect_settings.flags, NULL, NULL },   
+    { PROBE_PLUGIN_FIXTURE_INVERT_LIMIT_SETTING, Group_Probing, "Probe Protection Flags", NULL, Format_Bitfield, "Invert Tool Probe, External Connected Pin, Invert External Connected Pin, Alternate Tool Probe Pin, Invert Tool Probe Pin, Enable Motion Protection", NULL, NULL, Setting_NonCore, &probe_protect_settings.flags, NULL, NULL },   
 };
 
 #ifndef NO_SETTINGS_DESCRIPTIONS
@@ -467,7 +466,6 @@ static const setting_descr_t probe_protect_settings_descr[] = {
                             "NOTE: A hard reset of the controller is required after changing this setting."
     },    
     { PROBE_PLUGIN_FIXTURE_INVERT_LIMIT_SETTING, "Inversion setting for Probe signal during tool measurement.\\n"
-                            "Enable hard limits during tool probe.\\n"
                             "Enable external pin input for probe connected signal.\\n"
                             "Invert external pin input for probe connected signal.\\n"
                             "Enable alternate pin input for Tool Probe signal.\\n"
