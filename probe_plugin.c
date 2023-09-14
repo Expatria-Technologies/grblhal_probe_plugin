@@ -253,12 +253,6 @@ static void probe_completed (void){
     //re-activate protection.
     protection_on();
 
-    //if probe state was redirected, restore it
-    if(probe_get_state){
-        hal.probe.get_state = probe_get_state;
-        probe_get_state = NULL;
-    }
-
     if(on_probe_completed)
         on_probe_completed();
 }
@@ -286,7 +280,7 @@ bool probe_fixture (tool_data_t *tool, bool at_g59_3, bool on)
 {
     bool status = true;
 
-    if(on){ //are doing a tool change.
+    if(at_g59_3 && on){ //are doing a tool change.
         
         protection_off();  //disable protection when probing
 
@@ -297,18 +291,30 @@ bool probe_fixture (tool_data_t *tool, bool at_g59_3, bool on)
         //if a different pin is configured, re-direct probe reading to that pin via function pointer.
         if(probe_protect_settings.flags.tool_pin){
             //store current probe state function
-            probe_get_state = hal.probe.get_state;
+            if(hal.probe.get_state)
+                probe_get_state = hal.probe.get_state;
             hal.probe.get_state = probeGetState;
         }
+
+        report_message("stating tool probe", Message_Info);
 
         //set hard limits before probing the fixture.
         //if(!nvs_hardlimits && probe_protect_settings.flags.hardlimits){ //if the hard limits are not already enabled they need to be enabled.
         //    hal.limits.enable(settings.limits.flags.hard_enabled, true); // Change immediately. NOTE: Nice to have but could be problematic later.
         //}
     }else{
-        settings.probe.invert_probe_pin = nvs_invert_probe_pin;  //restore pin inversion setting
+        if(probe_protect_settings.flags.tool_pin){
+            //restore probe state function
+            if(probe_get_state)
+                hal.probe.get_state = probe_get_state;
+            probe_get_state = NULL;
+        }
+        if(probe_protect_settings.flags.invert)                
+            settings.probe.invert_probe_pin = nvs_invert_probe_pin;  //restore pin inversion setting
         //hal.limits.enable(settings.limits.flags.hard_enabled, nvs_hardlimits);  //restore hard limit settings.
-        protection_on();      //restore protection.   
+        protection_on();      //restore protection.  
+
+        report_message("restoring tool probe", Message_Info); 
     }
 
     if(on_probe_fixture)
