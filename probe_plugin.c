@@ -295,9 +295,6 @@ bool probe_fixture (tool_data_t *tool, bool at_g59_3, bool on)
                 probe_get_state = hal.probe.get_state;
             hal.probe.get_state = probeGetState;
         }
-
-        report_message("stating tool probe", Message_Info);
-
         //set hard limits before probing the fixture.
         //if(!nvs_hardlimits && probe_protect_settings.flags.hardlimits){ //if the hard limits are not already enabled they need to be enabled.
         //    hal.limits.enable(settings.limits.flags.hard_enabled, true); // Change immediately. NOTE: Nice to have but could be problematic later.
@@ -313,8 +310,6 @@ bool probe_fixture (tool_data_t *tool, bool at_g59_3, bool on)
             settings.probe.invert_probe_pin = nvs_invert_probe_pin;  //restore pin inversion setting
         //hal.limits.enable(settings.limits.flags.hard_enabled, nvs_hardlimits);  //restore hard limit settings.
         protection_on();      //restore protection.  
-
-        report_message("restoring tool probe", Message_Info); 
     }
 
     if(on_probe_fixture)
