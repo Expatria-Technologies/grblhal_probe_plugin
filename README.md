@@ -30,7 +30,7 @@ Features:
 
 In future:
 - Trigger macro .nc upon probe connection and disconnection.
-- - Allow hard limits to be enabled during tool probe.
+- Allow hard limits to be enabled during tool probe.
 - Set jog exclusion zone around toolsetter.
 - Store TLR persistently.
 - Different decel value for probing
