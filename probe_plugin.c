@@ -515,6 +515,7 @@ static void plugin_settings_load (void)
         probe_protect_settings.tool_port = n_ports - 2;        
 
     probe_connect_port = probe_protect_settings.protect_port;
+    tool_probe_port = probe_protect_settings.tool_port;
     nvs_hardlimits = settings.limits.flags.hard_enabled;
     nvs_invert_probe_pin = settings.probe.invert_probe_pin;
 
