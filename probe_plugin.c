@@ -100,7 +100,8 @@ static probe_state_t prev_probe;
 
 static uint8_t probe_connect_port;
 static uint8_t tool_probe_port;
-static bool nvs_hardlimits, nvs_invert_probe_pin, protection_enabled = false;
+static bool nvs_invert_probe_pin, protection_enabled = false;
+static uint8_t nvs_hardlimits;
 static probe_connected_flags_t probe_connected;
 static driver_reset_ptr driver_reset;
 static user_mcode_ptrs_t user_mcode;
@@ -349,7 +350,7 @@ static void set_connected_status(uint_fast16_t state){
     previous_flags = probe_connected.value;   
 }
 
-static void onSpindleSetState (spindle_state_t state, float rpm)
+static void onSpindleSetState (spindle_ptrs_t *spindle, spindle_state_t state, float rpm)
 {
     //If the probe is connected and the spindle is turning on, alarm.
     if(probe_connected.value && (state.value !=0)){
@@ -357,7 +358,8 @@ static void onSpindleSetState (spindle_state_t state, float rpm)
         grbl.enqueue_realtime_command(CMD_RESET);
         report_message("PROBE IS IN SPINDLE!", Message_Warning);
     }
-    on_spindle_set_state(state, rpm);
+
+    on_spindle_set_state(spindle, state, rpm);
 }
 
 static bool onSpindleSelect (spindle_ptrs_t *spindle)
@@ -422,7 +424,7 @@ static void mcode_execute (uint_fast16_t state, parser_block_t *gc_block)
 static void probe_reset (void)
 {
     settings.probe.invert_probe_pin = nvs_invert_probe_pin;
-    hal.limits.enable(settings.limits.flags.hard_enabled, nvs_hardlimits);  //restore hard limit settings.
+    hal.limits.enable(settings.limits.flags.hard_enabled, (axes_signals_t)nvs_hardlimits);  //restore hard limit settings.
     //probe_connected.value = 0;  //seems like it is best for this to survive reset.
     //protocol_enqueue_rt_command(set_connected_status);
     probe_state_t probe = hal.probe.get_state();
