@@ -423,7 +423,7 @@ static void mcode_execute (uint_fast16_t state, parser_block_t *gc_block)
 
 static void probe_reset (void)
 {
-    settings.probe.invert_probe_pin = nvs_invert_probe_pin;
+    //settings.probe.invert_probe_pin = nvs_invert_probe_pin;
     hal.limits.enable(settings.limits.flags.hard_enabled, (axes_signals_t)nvs_hardlimits);  //restore hard limit settings.
     //probe_connected.value = 0;  //seems like it is best for this to survive reset.
     //protocol_enqueue_rt_command(set_connected_status);
