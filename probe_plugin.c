@@ -66,8 +66,9 @@ typedef union {
         ext_pin_inv    :1,
         tool_pin       :1,
         tool_pin_inv   :1,
-        motion_protect :1,        
-        reserved    :2;
+        motion_protect :1,
+        t99_protect    :1,      
+        reserved       :1;
     };
 } probe_protect_flags_t;
 
@@ -364,7 +365,7 @@ static void onSpindleSetState (spindle_ptrs_t *spindle, spindle_state_t state, f
     //If the probe is connected and the spindle is turning on, alarm.
     if(probe_connected.value && (state.value !=0)){
         state.value = 0; //ensure spindle is off
-        grbl.enqueue_realtime_command(CMD_RESET);
+        grbl.enqueue_realtime_command(CMD_STOP);
         report_message("PROBE IS IN SPINDLE!", Message_Warning);
     }
 
@@ -385,7 +386,7 @@ static void onToolSelected (tool_data_t *tool)
     //if the tool is 99, set probe connected.
     current_tool = tool;
 
-    if (tool->tool_id == 99){
+    if ((tool->tool_id == 99) && probe_protect_settings.flags.t99_protect){
         probe_connected.t99 = true;     
     }else {
         probe_connected.t99 = false;        
@@ -480,7 +481,7 @@ static const setting_group_detail_t user_groups [] = {
 static const setting_detail_t user_settings[] = {
     { PROBE_PLUGIN_PORT_SETTING1, Group_Probing, "Probe Connected Aux Input", NULL, Format_Int8, "#0", "0", max_port, Setting_NonCore, &probe_protect_settings.protect_port, NULL, NULL },
     { PROBE_PLUGIN_PORT_SETTING2, Group_Probing, "Tool Probe Aux Input", NULL, Format_Int8, "#0", "0", max_port, Setting_NonCore, &probe_protect_settings.tool_port, NULL, NULL },    
-    { PROBE_PLUGIN_FIXTURE_INVERT_LIMIT_SETTING, Group_Probing, "Probe Protection Flags", NULL, Format_Bitfield, "Invert Tool Probe, External Connected Pin, Invert External Connected Pin, Alternate Tool Probe Pin, Invert Tool Probe Pin, Enable Motion Protection", NULL, NULL, Setting_NonCore, &probe_protect_settings.flags, NULL, NULL },   
+    { PROBE_PLUGIN_FIXTURE_INVERT_LIMIT_SETTING, Group_Probing, "Probe Protection Flags", NULL, Format_Bitfield, "Invert Tool Probe, External Connected Pin, Invert External Connected Pin, Alternate Tool Probe Pin, Invert Tool Probe Pin, Enable Motion Protection, T99 Probe Connected", NULL, NULL, Setting_NonCore, &probe_protect_settings.flags, NULL, NULL },   
 };
 
 #ifndef NO_SETTINGS_DESCRIPTIONS
@@ -497,7 +498,8 @@ static const setting_descr_t probe_protect_settings_descr[] = {
                             "Invert external pin input for probe connected signal.\\n"
                             "Enable alternate pin input for Tool Probe signal.\\n"
                             "Invert alternate pin input for Tool Probe signal.\\n"    
-                            "Enable probe motion protection.  Alarm will trip if probe is asserted on non-probing moves (Experimental).\\n"                          
+                            "Enable probe motion protection.  Alarm will trip if probe is asserted on non-probing moves (Experimental).\\n"
+                            "Enable probe protection on T99.  Spindle is disabled when T99 (probe) is selected.\\n"                          
                             "NOTE: A hard reset of the controller is required after changing this setting."
     },   
 };
@@ -517,6 +519,7 @@ static void plugin_settings_restore (void)
     probe_protect_settings.protect_port = hal.port.num_digital_out ? hal.port.num_digital_out - 1 : 0;
     probe_protect_settings.tool_port = hal.port.num_digital_out ? hal.port.num_digital_out - 1 : 0;
     probe_protect_settings.flags.value = 0;
+    probe_protect_settings.flags.t99_protect = 1;
 
     hal.nvs.memcpy_to_nvs(nvs_address, (uint8_t *)&probe_protect_settings, sizeof(probe_protect_settings_t), true);
 }
