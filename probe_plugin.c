@@ -256,14 +256,6 @@ static void probe_completed (void){
     //re-activate protection.
     protection_on();
 
-    //might need a function here to redirect back to original function pointer?
-    if(probe_protect_settings.flags.tool_pin){
-        //restore probe state function
-        if(probe_get_state)
-            hal.probe.get_state = probe_get_state;
-        probe_get_state = NULL;
-    }
-
     if(on_probe_completed)
         on_probe_completed();
 }
@@ -293,6 +285,8 @@ bool probe_fixture (tool_data_t *tool, bool at_g59_3, bool on)
 
     if(at_g59_3 && on){ //are doing a tool change.
         
+        report_message("Doing tool probe", Message_Info);
+
         protection_off();  //disable protection when probing
 
         //set polarity before probing the fixture.
@@ -301,6 +295,7 @@ bool probe_fixture (tool_data_t *tool, bool at_g59_3, bool on)
         
         //if a different pin is configured, re-direct probe reading to that pin via function pointer.
         if(probe_protect_settings.flags.tool_pin){
+            report_message("Activating alternate tool pin", Message_Info);
             //store current probe state function
             if(hal.probe.get_state)
                 probe_get_state = hal.probe.get_state;
@@ -312,6 +307,7 @@ bool probe_fixture (tool_data_t *tool, bool at_g59_3, bool on)
         //}
     }else{
         if(probe_protect_settings.flags.tool_pin){
+            report_message("Restoring probe pin", Message_Info);
             //restore probe state function
             if(probe_get_state)
                 hal.probe.get_state = probe_get_state;
@@ -433,10 +429,6 @@ static void mcode_execute (uint_fast16_t state, parser_block_t *gc_block)
 
 static void probeConfigure (bool is_probe_away, bool probing)
 {
-    if(probe_get_state){
-        hal.probe.get_state = probe_get_state;
-        probe_get_state = NULL;
-    }
     if(on_probe_configure)
         on_probe_configure(is_probe_away, probing);
     
