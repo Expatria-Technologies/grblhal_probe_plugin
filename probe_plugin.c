@@ -113,7 +113,7 @@ static on_report_options_ptr on_report_options;
 static probe_protect_settings_t probe_protect_settings;
 static on_probe_start_ptr on_probe_start;
 static on_probe_completed_ptr on_probe_completed;
-static on_probe_fixture_ptr on_probe_fixture;
+static on_probe_toolsetter_ptr on_probe_fixture;
 static on_spindle_select_ptr on_spindle_select;
 static stepper_pulse_start_ptr stepper_pulse_start;
 static spindle_set_state_ptr on_spindle_set_state = NULL;
@@ -151,7 +151,7 @@ static user_mcode_t mcode_check (user_mcode_t mcode)
 {
     return mcode == (user_mcode_t)401 || mcode == (user_mcode_t)402
                      ? mcode
-                     : (user_mcode.check ? user_mcode.check(mcode) : UserMCode_Ignore);
+                     : (user_mcode.check ? user_mcode.check(mcode) : UserMCode_Unsupported);
 }
 
 static status_code_t mcode_validate (parser_block_t *gc_block, parameter_words_t *deprecated)
@@ -171,7 +171,7 @@ static status_code_t mcode_validate (parser_block_t *gc_block, parameter_words_t
             break;
     }
 
-    return state == Status_Unhandled && user_mcode.validate ? user_mcode.validate(gc_block, deprecated) : state;
+    return state == Status_Unhandled && user_mcode.validate ? user_mcode.validate(gc_block) : state;
 }
 
 // local redirected probing function for tool probe pin.
@@ -318,9 +318,10 @@ bool probe_fixture (tool_data_t *tool, bool at_g59_3, bool on)
         //hal.limits.enable(settings.limits.flags.hard_enabled, nvs_hardlimits);  //restore hard limit settings.
         protection_on();      //restore protection.  
     }
-
+    
+    //typedef bool (*on_probe_toolsetter_ptr)(tool_data_t *tool, coord_data_t *position, bool at_g59_3, bool on)
     if(on_probe_fixture)
-        status = on_probe_fixture(tool, at_g59_3, on);
+        status = on_probe_fixture(tool, NULL, at_g59_3, on);
 
     return status;
 }
@@ -540,7 +541,7 @@ static void plugin_settings_load (void)
     nvs_hardlimits = settings.limits.flags.hard_enabled;
     nvs_invert_probe_pin = settings.probe.invert_probe_pin;
 
-    memcpy(&user_mcode, &hal.user_mcode, sizeof(user_mcode_ptrs_t));
+    memcpy(&user_mcode, &grbl.user_mcode, sizeof(user_mcode_ptrs_t));
 
     if(probe_protect_settings.flags.ext_pin){
         if(ioport_claim(Port_Digital, Port_Input, &probe_connect_port, "Probe Connected")) {
@@ -584,8 +585,8 @@ void probe_protect_init (void)
     on_tool_changed = grbl.on_tool_changed;
     grbl.on_tool_changed = tool_changed;
 
-    on_probe_fixture = grbl.on_probe_fixture;
-    grbl.on_probe_fixture = probe_fixture;
+    on_probe_fixture = grbl.on_probe_toolsetter;
+    grbl.on_probe_toolsetter = probe_fixture;
 
     on_probe_completed = grbl.on_probe_completed;
     grbl.on_probe_completed = probe_completed;
@@ -606,10 +607,10 @@ void probe_protect_init (void)
     hal.probe.configure = probeConfigure;
 
     //note that these do not chain.
-    hal.user_mcode.check = mcode_check;
-    hal.user_mcode.validate = mcode_validate;
-    hal.user_mcode.execute = mcode_execute;   
-    memcpy(&user_mcode, &hal.user_mcode, sizeof(user_mcode_ptrs_t)); 
+    grbl.user_mcode.check = mcode_check;
+    grbl.user_mcode.validate = mcode_validate;
+    grbl.user_mcode.execute = mcode_execute;   
+    memcpy(&user_mcode, &grbl.user_mcode, sizeof(user_mcode_ptrs_t)); 
 
     if(!ioport_can_claim_explicit()) {
 
