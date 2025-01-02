@@ -279,7 +279,7 @@ static void tool_changed (tool_data_t *tool){
 //within the radius of the G59.3 position defined below.
 // When called from "normal" probing tool is always NULL, when called from within
 // a tool change sequence (M6) then tool is a pointer to the selected tool.
-bool probe_fixture (tool_data_t *tool, bool at_g59_3, bool on)
+static bool probe_fixture (tool_data_t *tool, bool at_g59_3, bool on)
 {
     bool status = true;
 
