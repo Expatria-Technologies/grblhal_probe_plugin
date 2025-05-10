@@ -53,7 +53,6 @@
 
 //add function pointers for tool number and pulse start
 
-
 static uint8_t n_ports;
 static char max_port[4];
 
@@ -122,7 +121,7 @@ static on_tool_changed_ptr on_tool_changed = NULL;
 static probe_get_state_ptr probe_get_state = NULL;
 static probe_configure_ptr on_probe_configure = NULL;
 
-static void set_connected_status(uint_fast16_t state);
+static void set_connected_status(void *data);
 
 //returns true if probe is connected and sets core variable.
 static void check_connected_pin (void)
@@ -144,17 +143,17 @@ static void check_connected_pin (void)
 
 ISR_CODE static void set_connected (uint8_t irq_port, bool is_high)
 {
-    protocol_enqueue_rt_command(set_connected_status);    
+    task_add_immediate(set_connected_status, NULL);    
 }
 
-static user_mcode_t mcode_check (user_mcode_t mcode)
+static user_mcode_type_t mcode_check (user_mcode_t mcode)
 {
     return mcode == (user_mcode_t)401 || mcode == (user_mcode_t)402
                      ? mcode
                      : (user_mcode.check ? user_mcode.check(mcode) : UserMCode_Unsupported);
 }
 
-static status_code_t mcode_validate (parser_block_t *gc_block, parameter_words_t *deprecated)
+static status_code_t mcode_validate (parser_block_t *gc_block)
 {
     status_code_t state = Status_OK;
 
@@ -279,7 +278,7 @@ static void tool_changed (tool_data_t *tool){
 //within the radius of the G59.3 position defined below.
 // When called from "normal" probing tool is always NULL, when called from within
 // a tool change sequence (M6) then tool is a pointer to the selected tool.
-static bool probe_fixture (tool_data_t *tool, coord_data_t *position, bool at_g59_3, bool on)
+bool probe_fixture (tool_data_t *tool, coord_data_t *position, bool at_g59_3, bool on)
 {
     bool status = true;
 
@@ -327,7 +326,7 @@ static bool probe_fixture (tool_data_t *tool, coord_data_t *position, bool at_g5
 }
 
 //static void on_probe_connected_toggle(void){
-static void set_connected_status(uint_fast16_t state){    
+static void set_connected_status(void *data){    
     
     static uint8_t previous_flags;
     //probe_state_t probe = hal.probe.get_state();
@@ -389,7 +388,7 @@ static void onToolSelected (tool_data_t *tool)
         probe_connected.t99 = false;        
     }
 
-    set_connected_status(tool->tool_id);
+    set_connected_status(&tool->tool_id);
 
     if(on_tool_selected)
         on_tool_selected(tool);
@@ -422,7 +421,7 @@ static void mcode_execute (uint_fast16_t state, parser_block_t *gc_block)
             break;
     }
 
-    set_connected_status(probe_connected.mcode);  
+    set_connected_status(NULL);  
 
     if(!handled && user_mcode.execute)
         user_mcode.execute(state, gc_block);
@@ -444,7 +443,7 @@ static void probe_reset (void)
     }   
     hal.limits.enable(settings.limits.flags.hard_enabled, (axes_signals_t)nvs_hardlimits);  //restore hard limit settings.
     //probe_connected.value = 0;  //seems like it is best for this to survive reset.
-    //protocol_enqueue_rt_command(set_connected_status);
+    //task_add_immediate(set_connected_status, NULL);
     probe_state_t probe = hal.probe.get_state();
     if (!probe.connected)
         grbl.enqueue_realtime_command(CMD_PROBE_CONNECTED_TOGGLE);      
@@ -460,7 +459,7 @@ static void report_options (bool newopt)
     }       
 }
 
-static void warning_msg (uint_fast16_t state)
+static void warning_msg (void *data)
 {
     report_message("Probe protect plugin failed to initialize!", Message_Warning);
 }
@@ -517,7 +516,7 @@ static void plugin_settings_restore (void)
     hal.nvs.memcpy_to_nvs(nvs_address, (uint8_t *)&probe_protect_settings, sizeof(probe_protect_settings_t), true);
 }
 
-static void warning_no_port (uint_fast16_t state)
+static void warning_no_port (void *data)
 {
     report_message("Probe plugin: configured port number is not available", Message_Warning);
 }
@@ -546,17 +545,17 @@ static void plugin_settings_load (void)
     if(probe_protect_settings.flags.ext_pin){
         if(ioport_claim(Port_Digital, Port_Input, &probe_connect_port, "Probe Connected")) {
         } else
-            protocol_enqueue_rt_command(warning_no_port);    
+            task_add_immediate(warning_no_port, NULL);    
 
         //Try to register the interrupt handler.
         if(!(hal.port.register_interrupt_handler(probe_connect_port, IRQ_Mode_Change, set_connected)))
-            protocol_enqueue_rt_command(warning_no_port);
+            task_add_immediate(warning_no_port, NULL);
     }
 
     if(probe_protect_settings.flags.tool_pin){
         if(ioport_claim(Port_Digital, Port_Input, &tool_probe_port, "Toolsetter G59.3")) {
         } else
-            protocol_enqueue_rt_command(warning_no_port);    
+            task_add_immediate(warning_no_port, NULL);    
         //Not an interrupt pin.
     }
 }
@@ -647,6 +646,6 @@ void probe_protect_init (void)
         grbl.enqueue_realtime_command(CMD_PROBE_CONNECTED_TOGGLE);  
 
     if(!ok)
-        protocol_enqueue_rt_command(warning_msg);
+        task_add_immediate(warning_msg, NULL);
 }
 
