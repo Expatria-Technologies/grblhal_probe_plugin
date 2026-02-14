@@ -24,18 +24,10 @@
 
 */
 
-#ifdef ARDUINO
-#include "../../grbl/hal.h"
-#include "../../grbl/protocol.h"
-#include "../../grbl/state_machine.h"
-#include "../../grbl/report.h"
-#include "../../grbl/nvs_buffer.h"
-#else
 #include "grbl/hal.h"
 #include "grbl/protocol.h"
 #include "grbl/state_machine.h"
 #include "grbl/report.h"
 #include "grbl/nvs_buffer.h"
-#endif
 
 /**/
