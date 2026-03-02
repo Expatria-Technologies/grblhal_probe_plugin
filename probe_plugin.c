@@ -646,6 +646,6 @@ void probe_protect_init (void)
         grbl.enqueue_realtime_command(CMD_PROBE_CONNECTED_TOGGLE);  
 
     if(!ok)
-        task_add_immediate(warning_msg, NULL);
+        task_run_on_startup(warning_msg, NULL);
 }
 
